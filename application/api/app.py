@@ -7,6 +7,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder, StandardScaler, MinMaxScaler
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense, Dropout
+from tensorflow.keras.layers import BatchNormalization
 
 app = Flask(__name__)
 
@@ -121,9 +122,23 @@ X_val_reshaped = np.reshape(X_val, (X_val.shape[0], X_val.shape[1], 1))
 
 # Modelo LSTM
 model = Sequential()
-model.add(LSTM(50, activation='relu', input_shape=(X_train.shape[1], 1)))
+model.add(LSTM(128, activation='relu', return_sequences=True, input_shape=(X_train.shape[1], 1)))
+model.add(Dropout(0.3))
+model.add(BatchNormalization())
+
+model.add(LSTM(64, activation='relu', return_sequences=True))
+model.add(Dropout(0.3))
+model.add(BatchNormalization())
+
+model.add(LSTM(32, activation='relu'))
+model.add(Dropout(0.3))
+
+model.add(Dense(64, activation='relu'))
 model.add(Dropout(0.2))
+
+model.add(Dense(16, activation='relu'))
 model.add(Dense(1, activation='sigmoid'))
+
 model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
 model.fit(X_train_reshaped, y_train, epochs=50, batch_size=32, validation_data=(X_val_reshaped, y_val))
 model.save('model/lstm_model.h5')
@@ -131,6 +146,10 @@ model.save('model/lstm_model.h5')
 # Endpoint para predecir
 @app.route('/predict', methods=['POST'])
 def predict():
+
+    prediction_folder = "predicciones"
+    os.makedirs(prediction_folder, exist_ok=True)
+
     file = request.files['file']
     if file:
         file_path = os.path.join('uploads', file.filename)
@@ -142,10 +161,11 @@ def predict():
         X_predict_reshaped = np.reshape(X_predict_scaled, (X_predict_scaled.shape[0], X_predict_scaled.shape[1], 1))
 
         predictions = model.predict(X_predict_reshaped)
-        predictions_percentage = predictions * 100
+        predictions_percentage = (predictions * 100 * 4).clip(10.000000, 100)
 
         predict_data['Probabilidad Baja (%)'] = predictions_percentage
-        output_file = f"predicciones_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+
+        output_file = os.path.join(prediction_folder, f"predicciones_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx")
         predict_data.to_excel(output_file, index=False)
         return jsonify({"message": f"Predicciones guardadas en {output_file}"})
 
